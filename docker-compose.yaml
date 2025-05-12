@@ -1,0 +1,219 @@
+x-postgres-env: &postgres-env
+  POSTGRES_DB: frames_db
+  POSTGRES_USER: user
+  POSTGRES_PASSWORD: password
+
+services:
+
+  # --- Redpanda --- #
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    container_name: redpanda
+    ports:
+      # kafka API port exposed to the host
+      - "9092:9092"
+      # kafka API port for communication between services inside the Docker network
+      - "29092:29092"
+      # kafks admin port for monitoring
+      - "9644:9644"
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    command:
+      - redpanda
+      - start
+      - --node-id
+      - "0"
+      - --kafka-addr
+      - PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092 # listen on all interfaces inside container
+      - --advertise-kafka-addr
+      - PLAINTEXT://redpanda:29092,PLAINTEXT_HOST://localhost:9092 # advertise for internal and external clients
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "info"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+    
+  topic_init:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    container_name: topic_init
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    command: 
+      - topic
+      - create
+      - frames
+      - --partitions=10
+      - --brokers=redpanda:29092
+  
+  topic_cleanup:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    container_name: topic_cleanup
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    command: 
+      - topic
+      - delete
+      - frames
+      - --brokers=redpanda:29092
+    profiles: ["manual"]
+
+  postgres:
+    image: postgres:14
+    container_name: postgres
+    environment:
+      <<: *postgres-env
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./microservices/data_generator/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d frames_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+
+  # --- Microservices --- #
+  data_generator:
+    build: ./microservices/data_generator # the directory with its Dockerfile
+    volumes:
+      - ./microservices/data_generator:/app # mounts the local code into the container
+      - ./data:/app/data # mounts the local data into the container
+      - frame_store:/app/frame_store 
+    command: python /app/app.py # Command to run your dummy Flask app
+    ports:
+      - "5001:5000" # expose Flask port for testing
+    environment:
+      SERVICE_NAME: Data Generator
+      KAFKA_BROKER: redpanda:29092 # connect to the redpanda service using its internal port
+      DATASET_ROOT_DIR: /app/data
+      DATA_TOPIC: frames
+      TWO_PRODUCERS: False
+      VID_SUBDIR: vids
+      <<: *postgres-env
+    depends_on:
+      redpanda: # depends on Redpanda being ready to send data
+        condition: service_healthy
+      topic_init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+
+  # car_detector:
+  #   build: ./microservices/car_detector
+  #   volumes:
+  #     - ./microservices/car_detector:/app
+  #     - ./models:/app/models
+  #     - ./debug_output:/app/debug_output
+  #     - frame_store:/app/frame_store 
+  #   command: python /app/app.py
+  #   ports:
+  #     - "5003:5000"
+  #   environment:
+  #     SERVICE_NAME: Car Detector
+  #     KAFKA_BROKER: redpanda:29092
+  #     INPUT_TOPIC: car-frames
+  #     OUTPUT_TOPIC: detections-cars
+  #     YOLO_MODEL_PATH: /app/models/best.pt
+  #     CSV_PATH: /app/debug_output/car_detections.csv
+  #     <<: *postgres-env
+  #   depends_on:
+  #     redpanda:
+  #       condition: service_healthy
+  #     postgres:
+  #       condition: service_healthy
+
+  # person_detector:
+  #   build: ./microservices/person_detector
+  #   volumes:
+  #     - ./microservices/person_detector:/app
+  #     - ./models:/app/models
+  #     - ./debug_output:/app/debug_output
+  #     - frame_store:/app/frame_store 
+  #   command: python /app/app.py
+  #   ports:
+  #     - "5004:5000"
+  #   environment:
+  #     SERVICE_NAME: Person Detector
+  #     KAFKA_BROKER: redpanda:29092
+  #     INPUT_TOPIC: person-frames
+  #     OUTPUT_TOPIC: detections-people
+  #     YOLO_MODEL_PATH: /app/models/best.pt
+  #     CSV_PATH: /app/debug_output/people_detections.csv
+  #     <<: *postgres-env
+  #   depends_on:
+  #     redpanda:
+  #       condition: service_healthy
+  #     postgres:
+  #       condition: service_healthy
+
+  # car_tracker:
+  #   build: ./microservices/car_tracker
+  #   volumes:
+  #     - ./microservices/car_tracker:/app
+  #     - ./debug_output:/app/debug_output
+  #   command: python /app/app.py
+  #   ports:
+  #     - "5005:5000"
+  #   environment:
+  #     SERVICE_NAME: Car Tracker
+  #     KAFKA_BROKER: redpanda:29092
+  #     INPUT_TOPIC: detections-cars
+  #     OUTPUT_TOPIC: tracks-cars
+  #     FRAME_RATE: 30
+  #     CSV_PATH: /app/debug_output/car_tracks.csv
+  #   depends_on:
+  #     redpanda:
+  #       condition: service_healthy
+  #     postgres:
+  #       condition: service_healthy
+
+  # person_tracker:
+  #   build: ./microservices/person_tracker
+  #   volumes:
+  #     - ./microservices/person_tracker:/app
+  #     - ./debug_output:/app/debug_output
+  #   command: python /app/app.py
+  #   ports:
+  #     - "5006:5000"
+  #   environment:
+  #     SERVICE_NAME: Person Tracker
+  #     KAFKA_BROKER: redpanda:29092
+  #     INPUT_TOPIC: detections-people
+  #     OUTPUT_TOPIC: tracks-people
+  #     FRAME_RATE: 30
+  #     CSV_PATH: /app/debug_output/people_tracks.csv
+  #   depends_on:
+  #     redpanda:
+  #       condition: service_healthy
+  #     postgres:
+  #       condition: service_healthy
+
+  # stats_generator:
+  #   build: ./microservices/stats_generator
+  #   volumes:
+  #     - ./microservices/stats_generator:/app
+  #     - ./debug_output:/app/debug_output
+  #   command: python /app/app.py
+  #   ports:
+  #     - "5007:5000" # test (a dashboard port)
+  #   environment:
+  #     SERVICE_NAME: Stats Generator
+  #     KAFKA_BROKER: redpanda:29092
+  #     CAR_TOPIC: tracks-cars
+  #     PEOPLE_TOPIC: tracks-people
+  #     CSV_PATH: /app/debug_output/stats.csv
+  #   depends_on:
+  #     redpanda:
+  #       condition: service_healthy
+  #     postgres:
+  #       condition: service_healthy
+
+# --- Volumes --- #
+volumes:
+  redpanda_data: # this volume will persist Redpanda's data across container restarts
+  pg_data:
+  frame_store:

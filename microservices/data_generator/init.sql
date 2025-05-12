@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS frames (
+    id SERIAL PRIMARY KEY,
+    frame_id TEXT UNIQUE NOT NULL,
+    video_id TEXT NOT NULL,
+    timestamp TIMESTAMPTZ NOT NULL,
+    path TEXT NOT NULL
+);
