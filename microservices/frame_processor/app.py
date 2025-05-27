@@ -24,14 +24,14 @@ print(f"[{SERVICE_NAME}] Container hostname: {CONTAINER_HOSTNAME}")
 print(f"[{SERVICE_NAME}] Processor ID: {PROCESSOR_ID}")
 
 os.makedirs(os.path.dirname(CSV_PATH), exist_ok=True)
-if not os.path.exists(CSV_PATH):
-    pd.DataFrame([{
-        "frame_id": "",
-        "video_id": "",
-        "producer_timestamp": "",
-        "consumer_timestamp": "",
-        "processor_id": ""
-    }]).iloc[0:0].to_csv(CSV_PATH, index=False)
+pd.DataFrame([{
+    "frame_id": "",
+    "video_id": "",
+    "producer_timestamp": "",
+    "consumer_timestamp": "",
+    "processor_id": "",
+    "frame_size_bytes": ""
+}]).iloc[0:0].to_csv(CSV_PATH, index=False)
 
 # ── Flask healthcheck ────────────────────────────────────────────────
 app = Flask(__name__)

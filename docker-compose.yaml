@@ -42,7 +42,7 @@ services:
       - topic
       - create
       - frames
-      - --partitions=5
+      - --partitions=1
       - --brokers=redpanda:29092
   
   topic_cleanup:
@@ -96,6 +96,7 @@ services:
       POSTGRES_DB: frames_db
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
+      MAX_FRAMES_TO_PROCESS: 1000
     depends_on:
       redpanda:
         condition: service_healthy
@@ -116,7 +117,6 @@ services:
       INPUT_TOPIC: frames
       PROCESS_LOG_TOPIC: processing-logs
       CSV_PATH: /app/debug_output/processing_logs.csv
-      # PROCESSOR_ID removed - now auto-generated
     depends_on:
       redpanda:
         condition: service_healthy
@@ -136,6 +136,7 @@ services:
       KAFKA_BROKER: redpanda:29092
       PROCESS_LOG_TOPIC: processing-logs
       CSV_PATH: /app/debug_output/stats.csv
+      MAX_FRAMES_TO_PROCESS: 1000
     depends_on:
       redpanda:
         condition: service_healthy

@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # ── Configuration from ENV ────────────────────────────────────────────
+MAX_FRAMES_TO_PROCESS = int(os.getenv('MAX_FRAMES_TO_PROCESS', '1000'))
 SERVICE_NAME     = os.getenv('SERVICE_NAME',    'Data Generator')
 KAFKA_BROKER     = os.getenv('KAFKA_BROKER',    'localhost:9092')
 DATASET_ROOT_DIR = os.getenv('DATASET_ROOT_DIR')
@@ -106,7 +107,14 @@ def start_stream():
     idx = 0
     logger.info(f"[{SERVICE_NAME}] Streaming {VIDEO_FILE}…")
 
+    if MAX_FRAMES_TO_PROCESS > 0:
+        logger.info(f"[{SERVICE_NAME}] Will process a maximum of {MAX_FRAMES_TO_PROCESS} frames.")
+
     while True:
+        if MAX_FRAMES_TO_PROCESS > 0 and frame_count >= MAX_FRAMES_TO_PROCESS:
+            logger.info(f"[{SERVICE_NAME}] Reached maximum frame limit of {MAX_FRAMES_TO_PROCESS}. Stopping stream.")
+            break
+
         ret, frame = cap.read()
         if not ret:
             break
@@ -152,7 +160,10 @@ def start_stream():
         idx += 1
 
     cap.release()
-    return jsonify({'status': f'Streamed {frame_count} frames from {VIDEO_FILE}'}), 200
+    if MAX_FRAMES_TO_PROCESS > 0 and frame_count >= MAX_FRAMES_TO_PROCESS:
+        return jsonify({'status': f'Streamed {frame_count} frames from {VIDEO_FILE} (limit reached)'}), 200
+    else:
+        return jsonify({'status': f'Streamed {frame_count} frames from {VIDEO_FILE} (end of video)'}), 200
 
 # ── Entrypoint ────────────────────────────────────────────────────────
 if __name__ == '__main__':
