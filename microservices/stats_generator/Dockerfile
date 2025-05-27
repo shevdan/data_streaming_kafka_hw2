@@ -15,16 +15,7 @@ RUN apt-get update \
 # Set working directory
 WORKDIR /app
 
-# Copy and install Python dependencies
-# 1. First install PyTorch CPU wheel (so ultralytics sees torch already)
-RUN pip install --no-cache-dir \
-      torch==2.0.1+cpu torchvision==0.15.2+cpu \
-      --extra-index-url https://download.pytorch.org/whl/cpu
-
-# 2. Install ultralytics *without* its dependencies
-RUN pip install --no-cache-dir ultralytics --no-deps
-
-# 3. Install the rest of your requirements (excluding ultralytics)
+# 3. Install the rest of your requirements
 RUN pip install --no-cache-dir \
       flask \
       kafka-python \
