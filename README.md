@@ -10,7 +10,7 @@ Navigate to the root directory of this project in your terminal. Run the provide
     python download_dataset.py
     ```
 This script will download the `vids.zip` archive from Google Drive and extract its contents into the `./data/vids` directory in the project root. The `docker-compose.yaml` file is then configured to mount the `./data/vids` directory on your host into the `/app/vids` directory *inside* the `data_generator` container.
-
+і
 
 
 To start you can simply run 
