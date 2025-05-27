@@ -5,7 +5,6 @@ x-postgres-env: &postgres-env
 
 services:
 
-  # --- Redpanda --- #
   redpanda:
     image: docker.redpanda.com/redpandadata/redpanda:latest
     container_name: redpanda
@@ -43,7 +42,7 @@ services:
       - topic
       - create
       - frames
-      - --partitions=10
+      - --partitions=5
       - --brokers=redpanda:29092
   
   topic_cleanup:
@@ -78,7 +77,7 @@ services:
 
   # --- Microservices --- #
   data_generator:
-    build: ./microservices/data_generator # the directory with its Dockerfile
+    build: ./microservices/data_generator
     volumes:
       - ./microservices/data_generator:/app # mounts the local code into the container
       - ./data:/app/data # mounts the local data into the container
@@ -88,24 +87,65 @@ services:
       - "5001:5000" # expose Flask port for testing
     environment:
       SERVICE_NAME: Data Generator
-      KAFKA_BROKER: redpanda:29092 # connect to the redpanda service using its internal port
+      KAFKA_BROKER: redpanda:29092
       DATASET_ROOT_DIR: /app/data
-      DATA_TOPIC: frames
-      TWO_PRODUCERS: False
       VID_SUBDIR: vids
-      <<: *postgres-env
+      VIDEO_FILE: vid_01.mp4
+      DATA_TOPIC: frames
+      TWO_PRODUCERS: "False"
+      POSTGRES_DB: frames_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
     depends_on:
-      redpanda: # depends on Redpanda being ready to send data
+      redpanda:
         condition: service_healthy
       topic_init:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
 
-  # car_detector:
-  #   build: ./microservices/car_detector
+  frame_processor:
+    build: ./microservices/frame_processor
+    volumes:
+      - ./microservices/frame_processor:/app
+      - ./debug_output:/app/debug_output
+    command: python /app/app.py
+    environment:
+      SERVICE_NAME: Frame Processor
+      KAFKA_BROKER: redpanda:29092
+      INPUT_TOPIC: frames
+      PROCESS_LOG_TOPIC: processing-logs
+      CSV_PATH: /app/debug_output/processing_logs.csv
+      # PROCESSOR_ID removed - now auto-generated
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      topic_init:
+        condition: service_completed_successfully
+
+  stats_generator:
+    build: ./microservices/stats_generator
+    volumes:
+      - ./microservices/stats_generator:/app
+      - ./debug_output:/app/debug_output
+    command: python /app/app.py
+    ports:
+      - "5007:5000"
+    environment:
+      SERVICE_NAME: Stats Generator
+      KAFKA_BROKER: redpanda:29092
+      PROCESS_LOG_TOPIC: processing-logs
+      CSV_PATH: /app/debug_output/stats.csv
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      topic_init:
+        condition: service_completed_successfully
+
+  # frame_processor:
+  #   build: ./microservices/frame_processor
   #   volumes:
-  #     - ./microservices/car_detector:/app
+  #     - ./microservices/frame_processor:/app
   #     - ./models:/app/models
   #     - ./debug_output:/app/debug_output
   #     - frame_store:/app/frame_store 
@@ -150,10 +190,10 @@ services:
   #     postgres:
   #       condition: service_healthy
 
-  # car_tracker:
-  #   build: ./microservices/car_tracker
+  # frame_processor:
+  #   build: ./microservices/frame_processor
   #   volumes:
-  #     - ./microservices/car_tracker:/app
+  #     - ./microservices/frame_processor:/app
   #     - ./debug_output:/app/debug_output
   #   command: python /app/app.py
   #   ports:
