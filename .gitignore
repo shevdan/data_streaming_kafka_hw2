@@ -1,5 +1,6 @@
 data/
 frame_store/
+debug_output/
 
 .DS_Store
 
