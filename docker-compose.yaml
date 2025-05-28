@@ -42,7 +42,7 @@ services:
       - topic
       - create
       - frames
-      - --partitions=1
+      - --partitions=10
       - --brokers=redpanda:29092
   
   topic_cleanup:
@@ -76,27 +76,59 @@ services:
 
 
   # --- Microservices --- #
-  data_generator:
+  data_generator_1: # Was 'data_generator', now instance 0
     build: ./microservices/data_generator
     volumes:
-      - ./microservices/data_generator:/app # mounts the local code into the container
-      - ./data:/app/data # mounts the local data into the container
+      - ./microservices/data_generator:/app
+      - ./data:/app/data
       - frame_store:/app/frame_store 
-    command: python /app/app.py # Command to run your dummy Flask app
+    command: python /app/app.py
     ports:
-      - "5001:5000" # expose Flask port for testing
+      - "5001:5000" # Host port for producer 0
     environment:
-      SERVICE_NAME: Data Generator
+      SERVICE_NAME: Data Generator 0 # MODIFIED
       KAFKA_BROKER: redpanda:29092
       DATASET_ROOT_DIR: /app/data
       VID_SUBDIR: vids
       VIDEO_FILE: vid_01.mp4
       DATA_TOPIC: frames
-      TWO_PRODUCERS: "False"
+      # TWO_PRODUCERS: "False" # REMOVED this env var
+      PRODUCER_INSTANCE_ID: "0"    # NEW
+      TOTAL_PRODUCERS: "2"       # NEW
       POSTGRES_DB: frames_db
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
-      MAX_FRAMES_TO_PROCESS: 1000
+      MAX_FRAMES_TO_PROCESS: 1000 # Total frames from source video to consider
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      topic_init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+
+  data_generator_2: # NEW service for producer instance 1
+    build: ./microservices/data_generator
+    volumes:
+      - ./microservices/data_generator:/app
+      - ./data:/app/data
+      - frame_store:/app/frame_store 
+    command: python /app/app.py
+    ports:
+      - "5002:5000" # Different host port for producer 1
+    environment:
+      SERVICE_NAME: Data Generator 1 # MODIFIED
+      KAFKA_BROKER: redpanda:29092
+      DATASET_ROOT_DIR: /app/data
+      VID_SUBDIR: vids
+      VIDEO_FILE: vid_01.mp4
+      DATA_TOPIC: frames
+      PRODUCER_INSTANCE_ID: "1"    # NEW
+      TOTAL_PRODUCERS: "2"       # NEW
+      POSTGRES_DB: frames_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      MAX_FRAMES_TO_PROCESS: 1000 # Total frames from source video to consider
     depends_on:
       redpanda:
         condition: service_healthy
