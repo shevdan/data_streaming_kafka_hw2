@@ -9,38 +9,53 @@ from flask import Flask
 from kafka import KafkaConsumer, KafkaProducer
 from kafka.errors import NoBrokersAvailable
 
-# ── Config ────────────────────────────────────────────────────────────
+
+# configure from environment variables
 SERVICE_NAME       = os.getenv("SERVICE_NAME", "Frame Processor")
 KAFKA_BROKER       = os.getenv("KAFKA_BROKER", "localhost:9092")
 INPUT_TOPIC        = os.getenv("INPUT_TOPIC", "frames")
 PROCESS_LOG_TOPIC  = os.getenv("PROCESS_LOG_TOPIC", "processing-logs")
 CSV_PATH           = os.getenv("CSV_PATH", "/app/debug_output/processing_logs.csv")
 
-# Generate unique processor ID based on container hostname
+
+# generate unique processor id based on container hostname
 CONTAINER_HOSTNAME = socket.gethostname()
 PROCESSOR_ID = f"processor-{CONTAINER_HOSTNAME}"
 
-print(f"[{SERVICE_NAME}] Container hostname: {CONTAINER_HOSTNAME}")
-print(f"[{SERVICE_NAME}] Processor ID: {PROCESSOR_ID}")
+print(f"{SERVICE_NAME} container hostname: {CONTAINER_HOSTNAME}")
+print(f"{SERVICE_NAME} processor id: {PROCESSOR_ID}")
 
-os.makedirs(os.path.dirname(CSV_PATH), exist_ok=True)
-pd.DataFrame([{
-    "frame_id": "",
-    "video_id": "",
-    "producer_timestamp": "",
-    "consumer_timestamp": "",
-    "processor_id": "",
-    "frame_size_bytes": ""
-}]).iloc[0:0].to_csv(CSV_PATH, index=False)
 
-# ── Flask healthcheck ────────────────────────────────────────────────
+# ensure csv file exists with header
+def _initialize_csv(path):
+    """
+    ensures the csv file exists and has the correct header
+    """
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    pd.DataFrame(columns=[
+        "frame_id",
+        "video_id",
+        "producer_timestamp",
+        "consumer_timestamp",
+        "processor_id",
+        "frame_size_bytes"
+    ]).to_csv(path, index=False)
+
+_initialize_csv(CSV_PATH)
+
+
+# flask health check endpoint
 app = Flask(__name__)
 @app.route("/")
 def health():
-    return f"{SERVICE_NAME} ({PROCESSOR_ID}) is running!"
+    return f"{SERVICE_NAME} ({PROCESSOR_ID}) is running"
 
-# ── Kafka setup ──────────────────────────────────────────────────────
+
+# kafka setup
 def make_producer():
+    """
+    creates a kafka producer with retry logic
+    """
     for _ in range(10):
         try:
             return KafkaProducer(
@@ -49,7 +64,7 @@ def make_producer():
             )
         except NoBrokersAvailable:
             time.sleep(2)
-    raise RuntimeError("Kafka broker not available")
+    raise RuntimeError("kafka broker not available")
 
 producer = make_producer()
 consumer = KafkaConsumer(
@@ -61,8 +76,13 @@ consumer = KafkaConsumer(
     group_id=f"{SERVICE_NAME}-group"
 )
 
+
+# main processing loop
 def process_loop():
-    print(f"[{SERVICE_NAME}] ({PROCESSOR_ID}) starting…")
+    """
+    consumes messages from kafka, simulates processing, and logs results
+    """
+    print(f"{SERVICE_NAME} ({PROCESSOR_ID}) starting")
     for msg in consumer:
         data       = msg.value
         frame_id   = data["frame_id"]
@@ -83,13 +103,16 @@ def process_loop():
             "frame_size_bytes":     data.get("frame_size_bytes")
         }
 
-        # append to CSV
+        # append to csv
         pd.DataFrame([log_row]).to_csv(CSV_PATH, mode="a", header=False, index=False)
         # publish for stats
         producer.send(PROCESS_LOG_TOPIC, log_row)
 
-        print(f"[{SERVICE_NAME}] ({PROCESSOR_ID}) processed {frame_id}")
+        print(f"{SERVICE_NAME} ({PROCESSOR_ID}) processed {frame_id}")
 
+
+# entrypoint
 if __name__ == "__main__":
     Thread(target=process_loop, daemon=True).start()
     app.run(host="0.0.0.0", port=5000)
+    
