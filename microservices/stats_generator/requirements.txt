@@ -1,5 +1,0 @@
-flask
-kafka-python
-opencv-python
-numpy
-pandas

@@ -1,4 +1,0 @@
-flask
-kafka-python
-numpy
-pandas

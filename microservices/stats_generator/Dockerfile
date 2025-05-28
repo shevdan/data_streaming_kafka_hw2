@@ -1,7 +1,5 @@
-# Dockerfile for car_detector
 FROM python:3.9-slim
 
-# Install system dependencies for OpenCV and Kafka client
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
       gcc \
@@ -12,10 +10,8 @@ RUN apt-get update \
       libgl1-mesa-glx \
   && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
 WORKDIR /app
 
-# 3. Install the rest of your requirements
 RUN pip install --no-cache-dir \
       flask \
       kafka-python \
@@ -26,14 +22,10 @@ RUN pip install --no-cache-dir \
       PyYAML \
       scipy
 
-# Copy application code
 COPY app.py .
 
-# Create directory for CSV debug output
 RUN mkdir -p debug_output
 
-# Expose Flask port
 EXPOSE 5000
 
-# Default command
 CMD ["python", "app.py"]
